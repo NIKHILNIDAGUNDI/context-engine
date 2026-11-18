@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  --surface-canvas: #09090b;
+  --surface-elevated: #101014;
+  --surface-interactive: #17171d;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-strong: #27272a;
+  --text-primary: #e4e4e7;
+  --text-muted: #71717a;
+  --semantic-verified: #34d399;
+  --semantic-citation: #fbbf24;
+  --semantic-indigo: #a5b4fc;
+  --topbar-height: 56px;
+  --split-chat-ratio: 48%;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --radius-control: 6px;
+  --radius-panel: 10px;
+  --font-sans: "Inter Variable", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+
+  --surface: var(--surface-elevated);
+  --line: var(--border-strong);
+  --muted: var(--text-muted);
+  --accent: var(--semantic-verified);
+}
+
+* { box-sizing: border-box; }
+html { background: var(--surface-canvas); }
+body { margin: 0; background: var(--surface-canvas); color: var(--text-primary); font-family: var(--font-sans); }
+button, textarea { font: inherit; }
+button { cursor: pointer; }
+pre { overflow-x: auto; }
+code, kbd, .font-mono { font-family: var(--font-mono); }
+.hljs { color: #d7e2ea; background: transparent; }
+.hljs-keyword, .hljs-selector-tag { color: #a5b4fc; }
+.hljs-string, .hljs-attr { color: #86efac; }
+.hljs-number, .hljs-literal { color: #fbbf24; }
+.hljs-comment { color: #71717a; }
+
+.answer-prose p { margin: .55rem 0; }
+.answer-prose ul, .answer-prose ol { margin: .6rem 0; padding-left: 1.25rem; }
+.answer-prose li { padding-left: .2rem; }
+.answer-prose li::marker { color: #71717a; }
+.answer-prose strong { color: #f4f4f5; font-weight: 600; }
+.answer-prose a { color: #6ee7b7; text-decoration: underline; text-underline-offset: 3px; }
+.answer-prose code { border: 1px solid #27272a; border-radius: .25rem; background: #18181b; padding: .1rem .3rem; color: #a7f3d0; font-size: .9em; }
+.answer-prose pre { margin: .75rem 0; border: 1px solid #27272a; border-radius: .5rem; background: #09090b; padding: .75rem; }
+.answer-prose pre code { border: 0; background: transparent; padding: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
