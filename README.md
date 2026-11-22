@@ -22,6 +22,10 @@ Agent tool-calling, relevance grading, and grounded synthesis use the Groq Chat 
 
 For production, deploy the Next.js app and configure the same environment variables in the hosting provider's secret store. The Supabase service-role key bypasses row-level security, so it is only read by server routes and must not be prefixed with `NEXT_PUBLIC_`. Apply the updated schema to enable RLS and revoke direct `anon`/`authenticated` access. Built-in login and API rate limits are per-process; use shared rate limiting at the edge for multi-instance deployments.
 
+## Citation policy
+
+Every citation quote is checked against the retrieved text (ignoring case, spacing and punctuation, which PDF extraction alters). `CITATION_POLICY=strict` (default) withholds the answer unless every citation is verified. `CITATION_POLICY=lenient` shows the answer when at least one citation is verified, drops the unverified citations and adds a warning to the answer. An answer with no verified citation, or with unresolved sub-questions, is always withheld.
+
 ## API
 
 - All data routes require signing in with `CONTEXT_ENGINE_ACCESS_KEY`; `GET /api/auth/session` checks session status, while `/api/auth/login` and `/api/auth/logout` create and clear the session.

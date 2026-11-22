@@ -2,6 +2,7 @@ import { z } from "zod";
 import Groq from "groq-sdk";
 import { getGroq, getGroqModel, groqCompletion } from "@/lib/groq";
 import { GROQ_MAX_TOKENS, isToolUseFailed } from "@/lib/groq-config";
+import { decideAnswer, getCitationPolicy, unverifiedCitationNote } from "@/lib/answer-policy";
 import { embedQuery } from "@/lib/embeddings";
 import { getSupabase } from "@/lib/supabase";
 import { mergeContextSnippets, packContext, type ContextSnippet } from "@/lib/context-packer";
@@ -533,14 +534,21 @@ export async function runAgent(question: string) {
     }
     return [{ ...citation, start_line: resolvedLines.start_line, end_line: resolvedLines.end_line }];
   });
-  const abstained = result.abstained || !validUsedIndices || result.unresolved_subquestions.length > 0 ||
-    !result.answer.trim() || groundedCitations.length !== result.citations.length ||
-    !groundedCitations.length || !result.used_chunk_indices.length;
-  const abstainReason = !abstained ? null
-    : result.abstained ? "model_abstained"
-    : result.unresolved_subquestions.length > 0 ? "unresolved_subquestions"
-    : !validUsedIndices || !result.used_chunk_indices.length ? "invalid_evidence_indices"
-    : "citations_not_grounded";
+  const decision = decideAnswer({
+    modelAbstained: result.abstained,
+    answer: result.answer,
+    unresolvedCount: result.unresolved_subquestions.length,
+    usedIndicesValid: validUsedIndices,
+    usedCount: result.used_chunk_indices.length,
+    citationCount: result.citations.length,
+    groundedCount: groundedCitations.length,
+    policy: getCitationPolicy(),
+  });
+  const abstained = decision.abstained;
+  const abstainReason = decision.reason;
+  const answerText = !abstained && decision.unverifiedCitations > 0
+    ? `${result.answer}${unverifiedCitationNote(decision.unverifiedCitations, result.citations.length)}`
+    : result.answer;
   if (abstainReason) console.warn("Agent abstained.", {
     abstain_reason: abstainReason,
     citations: result.citations.length,
@@ -548,8 +556,9 @@ export async function runAgent(question: string) {
     unresolved: result.unresolved_subquestions.slice(0, 3).map((item) => item.slice(0, 200)),
   });
   return {
-    answer: abstained ? ABSTENTION : result.answer,
+    answer: abstained ? ABSTENTION : answerText,
     abstained,
+    unverified_citations: abstained ? 0 : decision.unverifiedCitations,
     abstain_reason: abstainReason,
     retrieved_snippets: snippets.length,
     citations: abstained ? [] : groundedCitations.map(({ evidence_index: _index, quote: _quote, ...citation }) => citation),
