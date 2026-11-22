@@ -29,22 +29,36 @@ export function citationQuoteIsGrounded(citation: QuotedCitation, snippets: Cont
 // actually found rather than trusting line numbers the model guessed.
 const MIN_QUOTE_CHARS = 8;
 
-function letters(text: string) {
+function fold(text: string) {
   return text.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
 }
 
-export function resolveCitationLines(quote: string, snippet: ContextSnippet): { start_line: number; end_line: number } | null {
-  const fragments = quote.split(/\.{3}|\u2026/).map(letters).filter((fragment) => fragment.length >= MIN_QUOTE_CHARS);
-  if (!fragments.length) return null;
+// Models often number their quoted lists ("1. Cryptography ... 2. Intelligence") although the
+// extracted PDF text has no such digits. Only standalone list markers are removed, never figures.
+function stripListMarkers(quote: string) {
+  return quote.replace(/(^|\s)\d{1,2}[.)]\s+/g, "$1");
+}
 
+function buildHaystack(snippet: ContextSnippet) {
   let haystack = "";
   const lineOf: number[] = [];
   snippet.content.split("\n").forEach((line, index) => {
-    for (const char of letters(line)) {
+    for (const char of fold(line)) {
       haystack += char;
       lineOf.push(index);
     }
   });
+  return { haystack, lineOf };
+}
+
+function splitQuote(quote: string) {
+  return quote.split(/\.{3}|\u2026/).map((original) => ({ original: original.trim(), folded: fold(original) }));
+}
+
+function locate(quote: string, snippet: ContextSnippet) {
+  const fragments = splitQuote(quote).map((fragment) => fragment.folded).filter((fragment) => fragment.length >= MIN_QUOTE_CHARS);
+  if (!fragments.length) return null;
+  const { haystack, lineOf } = buildHaystack(snippet);
 
   let cursor = 0;
   let firstIndex = -1;
@@ -60,4 +74,20 @@ export function resolveCitationLines(quote: string, snippet: ContextSnippet): { 
     start_line: snippet.start_line + lineOf[firstIndex],
     end_line: snippet.start_line + lineOf[lastIndex],
   };
+}
+
+export function resolveCitationLines(quote: string, snippet: ContextSnippet): { start_line: number; end_line: number } | null {
+  return locate(quote, snippet) ?? locate(stripListMarkers(quote), snippet);
+}
+
+// For server logs: says which quote fragments are missing from the evidence entirely (as opposed
+// to present but out of order), so a failed citation can be traced to its cause.
+export function diagnoseCitation(quote: string, snippet: ContextSnippet) {
+  const { haystack } = buildHaystack(snippet);
+  return splitQuote(stripListMarkers(quote)).map((fragment) => ({
+    fragment: fragment.original.slice(0, 80),
+    letters_and_digits: fragment.folded.length,
+    counted: fragment.folded.length >= MIN_QUOTE_CHARS,
+    in_evidence: fragment.folded.length >= MIN_QUOTE_CHARS ? haystack.includes(fragment.folded) : null,
+  }));
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseAllowedFigmaFileUrl } from "@/lib/figma-url";
 import { findExactMatches } from "@/lib/grep";
-import { citationQuoteIsGrounded, resolveCitationLines } from "@/lib/citations";
+import { citationQuoteIsGrounded, diagnoseCitation, resolveCitationLines } from "@/lib/citations";
 import { consumeRateLimit } from "@/lib/rate-limit";
 import { buildSynthesisPrompt, SYNTHESIS_SYSTEM_PROMPT } from "@/lib/evidence-prompt";
 
@@ -91,5 +91,16 @@ describe("resolveCitationLines", () => {
     expect(resolveCitationLines("India's quantum efforts... National Quantum Mission (NQM) ... budget outlay of \u20b96,003 crore", pdf)).toEqual({ start_line: 1, end_line: 3 });
     expect(resolveCitationLines("our future success hinges on", pdf)).toEqual({ start_line: 4, end_line: 4 });
     expect(resolveCitationLines("budget outlay of 9,999 crore", pdf)).toBeNull();
+  });
+
+  it("falls back to letters-only matching when the model adds list numbers", () => {
+    const list = { file_path: "doc.pdf", start_line: 1, end_line: 3, content: "Five ways quantum computing reshapes national security:\nCryptography and Cybersecurity\nIntelligence Gathering" };
+    expect(resolveCitationLines("Five ways quantum computing reshapes national security: 1. Cryptography and Cybersecurity... 2. Intelligence Gathering", list)).toEqual({ start_line: 1, end_line: 3 });
+  });
+
+  it("reports which quote fragments are missing from the evidence", () => {
+    const evidence = { file_path: "doc.pdf", start_line: 1, end_line: 1, content: "Cryptography and Cybersecurity" };
+    const report = diagnoseCitation("Cryptography and Cybersecurity ... Satellite navigation systems", evidence);
+    expect(report.map((item) => item.in_evidence)).toEqual([true, false]);
   });
 });

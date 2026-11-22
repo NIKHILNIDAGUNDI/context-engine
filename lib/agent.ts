@@ -8,14 +8,14 @@ import { mergeContextSnippets, packContext, type ContextSnippet } from "@/lib/co
 import { readLineWindow } from "@/lib/line-window";
 import { isSafeIndexedPath } from "@/lib/indexed-path";
 import { findExactMatches } from "@/lib/grep";
-import { resolveCitationLines } from "@/lib/citations";
+import { diagnoseCitation, resolveCitationLines } from "@/lib/citations";
 import { buildSynthesisPrompt, SYNTHESIS_SYSTEM_PROMPT } from "@/lib/evidence-prompt";
 import { addGroqUsage, emptyGroqUsage } from "@/lib/groq-usage";
 
 const MAX_ITERATIONS = 3;
 const MAX_TOOL_CALLS_PER_ITERATION = 4;
 const MAX_TOOL_CALLS_PER_REQUEST = 8;
-const MAX_TOOL_OUTPUT_CHARS = 3500;
+const MAX_TOOL_OUTPUT_CHARS = 2500;
 const GRADE_BATCH_SIZE = 10;
 const GRADE_PASSAGE_CHARS = 1000;
 const MAX_SNIPPET_CHARS = 12_000;
@@ -524,6 +524,7 @@ export async function runAgent(question: string) {
         file_path: citation.file_path.slice(0, 120),
         index_used: uniqueUsedIndices.has(citation.evidence_index),
         quote_preview: citation.quote.slice(0, 120),
+        fragments: snippet ? diagnoseCitation(citation.quote, snippet) : "evidence_index out of range or file mismatch",
       });
       return [];
     }
@@ -537,7 +538,12 @@ export async function runAgent(question: string) {
     : result.unresolved_subquestions.length > 0 ? "unresolved_subquestions"
     : !validUsedIndices || !result.used_chunk_indices.length ? "invalid_evidence_indices"
     : "citations_not_grounded";
-  if (abstainReason) console.warn("Agent abstained.", { abstain_reason: abstainReason, citations: result.citations.length, grounded: groundedCitations.length });
+  if (abstainReason) console.warn("Agent abstained.", {
+    abstain_reason: abstainReason,
+    citations: result.citations.length,
+    grounded: groundedCitations.length,
+    unresolved: result.unresolved_subquestions.slice(0, 3).map((item) => item.slice(0, 200)),
+  });
   return {
     answer: abstained ? ABSTENTION : result.answer,
     abstained,
