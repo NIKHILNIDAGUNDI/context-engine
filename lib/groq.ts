@@ -4,7 +4,7 @@ import type { ChatCompletionCreateParamsNonStreaming } from "groq-sdk/resources/
 import { getRateLimitRetryDelayMs } from "@/lib/retry-delay";
 import { GroqTruncationError, groqReasoningOptions } from "@/lib/groq-config";
 
-export const DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b";
+export const DEFAULT_GROQ_MODEL = "openai/gpt-oss-20b";
 
 let client: Groq | undefined;
 
