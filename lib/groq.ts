@@ -55,7 +55,10 @@ export async function withGroqRetry<T>(operation: () => Promise<T>, signal: Abor
         ? error.headers
         : undefined;
       const fallbackMs = 200 * 2 ** attempt + Math.floor(Math.random() * 100);
-      await waitForRetry(getRateLimitRetryDelayMs(headers, fallbackMs), signal);
+      const delayMs = getRateLimitRetryDelayMs(headers, fallbackMs);
+      const status = (error as { status?: unknown }).status;
+      console.warn("Groq request failed; waiting before retry.", { attempt: attempt + 1, status, wait_ms: Math.round(delayMs) });
+      await waitForRetry(delayMs, signal);
     }
   }
   throw new Error("Groq request could not be completed.");
@@ -71,6 +74,7 @@ export async function groqCompletion(
   signal: AbortSignal,
   label: string,
 ) {
+  const startedAt = Date.now();
   const { data, response } = await withGroqRetry(
     () => ai.chat.completions.create({ ...groqReasoningOptions(String(params.model)), ...params }, { signal }).withResponse(),
     signal,
@@ -80,6 +84,7 @@ export async function groqCompletion(
   const headers = response.headers;
   console.info("Groq call completed.", {
     step: label,
+    ms: Date.now() - startedAt,
     model: params.model,
     finish_reason: data.choices[0]?.finish_reason,
     prompt_tokens: data.usage?.prompt_tokens,

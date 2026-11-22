@@ -23,23 +23,24 @@ export function citationQuoteIsGrounded(citation: QuotedCitation, snippets: Cont
   });
 }
 
-// PDF/DOCX extraction breaks words and lines arbitrarily ("O\nur future"), and models quote with
-// normalised whitespace. Matching therefore ignores all whitespace, and the line range is computed
-// from where the quote is actually found rather than trusting line numbers the model guessed.
+// PDF/DOCX extraction breaks words and lines arbitrarily ("O\nur future"), swaps symbols such as the
+// rupee sign, and models quote with clean punctuation and case. Matching therefore compares only
+// letters and digits, case-insensitively, and the line range is computed from where the quote is
+// actually found rather than trusting line numbers the model guessed.
 const MIN_QUOTE_CHARS = 8;
 
-function squash(text: string) {
-  return text.replace(/\s+/g, "");
+function letters(text: string) {
+  return text.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
 }
 
 export function resolveCitationLines(quote: string, snippet: ContextSnippet): { start_line: number; end_line: number } | null {
-  const fragments = quote.split(/\.{3}|\u2026/).map(squash).filter((fragment) => fragment.length >= MIN_QUOTE_CHARS);
+  const fragments = quote.split(/\.{3}|\u2026/).map(letters).filter((fragment) => fragment.length >= MIN_QUOTE_CHARS);
   if (!fragments.length) return null;
 
   let haystack = "";
   const lineOf: number[] = [];
   snippet.content.split("\n").forEach((line, index) => {
-    for (const char of squash(line)) {
+    for (const char of letters(line)) {
       haystack += char;
       lineOf.push(index);
     }

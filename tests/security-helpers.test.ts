@@ -80,4 +80,16 @@ describe("resolveCitationLines", () => {
   it("rejects quotes that are too short to be meaningful", () => {
     expect(resolveCitationLines("future", snippet)).toBeNull();
   });
+
+  it("ignores case, punctuation and symbol differences introduced by PDF extraction", () => {
+    const pdf = {
+      file_path: "doc.pdf",
+      start_line: 1,
+      end_line: 4,
+      content: "India\u2019s quantum efforts\nNational Quantum Mission (NQM)\nbudget outlay of `6,003 crore\nOur future success hinges on",
+    };
+    expect(resolveCitationLines("India's quantum efforts... National Quantum Mission (NQM) ... budget outlay of \u20b96,003 crore", pdf)).toEqual({ start_line: 1, end_line: 3 });
+    expect(resolveCitationLines("our future success hinges on", pdf)).toEqual({ start_line: 4, end_line: 4 });
+    expect(resolveCitationLines("budget outlay of 9,999 crore", pdf)).toBeNull();
+  });
 });
