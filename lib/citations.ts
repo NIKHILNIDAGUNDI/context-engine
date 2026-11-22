@@ -22,3 +22,41 @@ export function citationQuoteIsGrounded(citation: QuotedCitation, snippets: Cont
     return citedLines.join("\n").includes(citation.quote);
   });
 }
+
+// PDF/DOCX extraction breaks words and lines arbitrarily ("O\nur future"), and models quote with
+// normalised whitespace. Matching therefore ignores all whitespace, and the line range is computed
+// from where the quote is actually found rather than trusting line numbers the model guessed.
+const MIN_QUOTE_CHARS = 8;
+
+function squash(text: string) {
+  return text.replace(/\s+/g, "");
+}
+
+export function resolveCitationLines(quote: string, snippet: ContextSnippet): { start_line: number; end_line: number } | null {
+  const fragments = quote.split(/\.{3}|\u2026/).map(squash).filter((fragment) => fragment.length >= MIN_QUOTE_CHARS);
+  if (!fragments.length) return null;
+
+  let haystack = "";
+  const lineOf: number[] = [];
+  snippet.content.split("\n").forEach((line, index) => {
+    for (const char of squash(line)) {
+      haystack += char;
+      lineOf.push(index);
+    }
+  });
+
+  let cursor = 0;
+  let firstIndex = -1;
+  let lastIndex = -1;
+  for (const fragment of fragments) {
+    const found = haystack.indexOf(fragment, cursor);
+    if (found < 0) return null;
+    if (firstIndex < 0) firstIndex = found;
+    lastIndex = found + fragment.length - 1;
+    cursor = lastIndex + 1;
+  }
+  return {
+    start_line: snippet.start_line + lineOf[firstIndex],
+    end_line: snippet.start_line + lineOf[lastIndex],
+  };
+}

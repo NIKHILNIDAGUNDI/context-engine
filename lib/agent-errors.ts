@@ -100,8 +100,14 @@ export function getAgentFailureDiagnostic(error: unknown) {
   if (text.includes("model") && (status === 404 || text.includes("not found") || text.includes("not supported"))) {
     return "The configured Groq model is unavailable. Check GROQ_MODEL against the models enabled for this account.";
   }
+  if (text.includes("tool_use_failed")) {
+    return "Groq's model produced a malformed tool call (tool_use_failed). This is usually transient; retry the question.";
+  }
+  if (name === "GroqTruncationError") {
+    return "The model ran out of output tokens before finishing a step (reasoning tokens count toward the limit). Retry, or raise GROQ_MAX_TOKENS in lib/groq-config.ts.";
+  }
   if (text.includes("json_validate_failed")) {
-    return "Groq rejected the generated JSON response. The agent now uses strict JSON Schema output; confirm GROQ_MODEL supports it and retry.";
+    return "Groq rejected the generated JSON response, often because the output was cut off or the model does not support strict JSON Schema. Check the server log for the step's finish_reason and confirm GROQ_MODEL supports structured outputs.";
   }
   if (name === "TimeoutError" || name === "AbortError" || text.includes("timed out") || text.includes("timeout")) {
     return "The Groq request timed out. Retry with a shorter question or check network connectivity.";

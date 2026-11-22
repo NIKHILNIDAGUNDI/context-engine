@@ -6,8 +6,70 @@ export type DocChunk = {
   content: string;
 };
 
+// Chunks above MAX_CHUNK_CHARS are split so that retrieval returns focused passages
+// and the whole chunk fits inside the embedding input and the 4,000-token evidence budget.
+export const TARGET_CHUNK_CHARS = 1800;
+export const MAX_CHUNK_CHARS = 2400;
+
 function isMarkdown(filePath: string) {
   return /\.(md|mdx)$/i.test(filePath);
+}
+
+// Extensions the declaration-based chunker understands. Everything else (PDF/DOCX/TXT text,
+// JSON, CSV, YAML, HTML, SQL, ...) is chunked as prose by size, paragraph and page.
+function isCode(filePath: string) {
+  return /\.(ts|tsx|js|jsx|mjs|cjs|java|go|rs|py)$/i.test(filePath);
+}
+
+function textChunks(filePath: string, lines: string[]): DocChunk[] {
+  const chunks: DocChunk[] = [];
+  let startIndex = 0;
+  let size = 0;
+  let page: number | null = null;
+  let chunkPage: number | null = null;
+
+  const flush = (endExclusive: number) => {
+    if (endExclusive <= startIndex) return;
+    const content = lines.slice(startIndex, endExclusive).join("\n");
+    if (content.trim()) {
+      chunks.push({
+        file_path: filePath,
+        heading_path: chunkPage ? `Page ${chunkPage}` : `Document · lines ${startIndex + 1}-${endExclusive}`,
+        start_line: startIndex + 1,
+        end_line: endExclusive,
+        content,
+      });
+    }
+    startIndex = endExclusive;
+    size = 0;
+    chunkPage = page;
+  };
+
+  lines.forEach((line, index) => {
+    const marker = line.match(/^--- Page (\d+) ---$/);
+    if (marker) {
+      flush(index);
+      page = Number(marker[1]);
+      chunkPage = page;
+    }
+    const cost = line.length + 1;
+    if (size > 0 && size + cost > MAX_CHUNK_CHARS) flush(index);
+    size += cost;
+    if (size >= TARGET_CHUNK_CHARS && !line.trim()) flush(index + 1);
+  });
+  flush(lines.length);
+  return chunks;
+}
+
+function splitOversized(chunk: DocChunk): DocChunk[] {
+  if (chunk.content.length <= MAX_CHUNK_CHARS) return [chunk];
+  const parts = textChunks(chunk.file_path, chunk.content.split("\n"));
+  return parts.map((part, index) => ({
+    ...part,
+    heading_path: `${chunk.heading_path} · part ${index + 1}/${parts.length}`,
+    start_line: chunk.start_line + part.start_line - 1,
+    end_line: chunk.start_line + part.end_line - 1,
+  }));
 }
 
 function markdownChunks(filePath: string, lines: string[]): DocChunk[] {
@@ -61,7 +123,7 @@ function codeChunks(filePath: string, lines: string[]): DocChunk[] {
   let inBlockComment = false;
   let quote = "";
   let escaped = false;
-  const declaration = /^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function\b|class\b|interface\b|type\b|enum\b|namespace\b|(?:const|let|var)\s+[\w$]+\s*=\s*(?:async\s*)?(?:\([^)]*\)|[\w$]+)\s*=>|(?:public|private|protected|static|abstract|async\s+)*[\w$]+\s*\([^;]*\)\s*\{)/;
+  const declaration = /^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:pub(?:\([^)]*\))?\s+)?(?:function\b|class\b|interface\b|type\b|enum\b|namespace\b|def\b|fn\b|func\b|struct\b|impl\b|trait\b|(?:const|let|var)\s+[\w$]+\s*=\s*(?:async\s*)?(?:\([^)]*\)|[\w$]+)\s*=>|(?:public|private|protected|static|abstract|async\s+)*[\w$]+\s*\([^;]*\)\s*\{)/;
 
   lines.forEach((line, index) => {
     if (braceDepth === 0 && !inBlockComment && quote !== "`" && declaration.test(line) && line.trim()) {
@@ -122,5 +184,8 @@ function codeChunks(filePath: string, lines: string[]): DocChunk[] {
 
 export function chunkFile(filePath: string, rawContent: string): DocChunk[] {
   const lines = rawContent.replace(/\r\n/g, "\n").split("\n");
-  return isMarkdown(filePath) ? markdownChunks(filePath, lines) : codeChunks(filePath, lines);
+  const chunks = isMarkdown(filePath)
+    ? markdownChunks(filePath, lines)
+    : isCode(filePath) ? codeChunks(filePath, lines) : textChunks(filePath, lines);
+  return chunks.flatMap(splitOversized);
 }

@@ -1,8 +1,11 @@
 import "server-only";
 import Groq from "groq-sdk";
+import type { ChatCompletionCreateParamsNonStreaming } from "groq-sdk/resources/chat/completions";
 import { getRateLimitRetryDelayMs } from "@/lib/retry-delay";
+import { GroqTruncationError, groqReasoningOptions } from "@/lib/groq-config";
 
 export const DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b";
+
 let client: Groq | undefined;
 
 export function getGroq() {
@@ -56,4 +59,38 @@ export async function withGroqRetry<T>(operation: () => Promise<T>, signal: Abor
     }
   }
   throw new Error("Groq request could not be completed.");
+}
+
+/**
+ * Runs one Groq chat completion with retries, logs token usage and the remaining per-minute
+ * rate-limit budget (no secrets), and fails loudly when the output was cut off by the token limit.
+ */
+export async function groqCompletion(
+  ai: Groq,
+  params: ChatCompletionCreateParamsNonStreaming,
+  signal: AbortSignal,
+  label: string,
+) {
+  const { data, response } = await withGroqRetry(
+    () => ai.chat.completions.create({ ...groqReasoningOptions(String(params.model)), ...params }, { signal }).withResponse(),
+    signal,
+  );
+  const reasoningTokens = (data.usage as { completion_tokens_details?: { reasoning_tokens?: number } } | undefined)
+    ?.completion_tokens_details?.reasoning_tokens;
+  const headers = response.headers;
+  console.info("Groq call completed.", {
+    step: label,
+    model: params.model,
+    finish_reason: data.choices[0]?.finish_reason,
+    prompt_tokens: data.usage?.prompt_tokens,
+    completion_tokens: data.usage?.completion_tokens,
+    reasoning_tokens: reasoningTokens,
+    remaining_tokens: headers.get("x-ratelimit-remaining-tokens") ?? undefined,
+    remaining_requests: headers.get("x-ratelimit-remaining-requests") ?? undefined,
+    reset_tokens: headers.get("x-ratelimit-reset-tokens") ?? undefined,
+  });
+  if (data.choices[0]?.finish_reason === "length") {
+    throw new GroqTruncationError(label, data.usage?.completion_tokens);
+  }
+  return data;
 }

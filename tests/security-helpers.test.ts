@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseAllowedFigmaFileUrl } from "@/lib/figma-url";
 import { findExactMatches } from "@/lib/grep";
-import { citationQuoteIsGrounded } from "@/lib/citations";
+import { citationQuoteIsGrounded, resolveCitationLines } from "@/lib/citations";
 import { consumeRateLimit } from "@/lib/rate-limit";
 import { buildSynthesisPrompt, SYNTHESIS_SYSTEM_PROMPT } from "@/lib/evidence-prompt";
 
@@ -55,5 +55,29 @@ describe("security helpers", () => {
     expect(consumeRateLimit(request, "test", 2, 60_000, 1_001)).toBe(true);
     expect(consumeRateLimit(request, "test", 2, 60_000, 1_002)).toBe(false);
     expect(consumeRateLimit(request, "test", 2, 60_000, 61_001)).toBe(true);
+  });
+});
+
+describe("resolveCitationLines", () => {
+  const snippet = {
+    file_path: "doc.pdf",
+    start_line: 10,
+    end_line: 15,
+    content: "--- Page 1 ---\nQuantum Computing:\nO\nur   future success hinges on our ability to\nproactively harness transformative technologies\nfor inclusive economic growth",
+  };
+
+  it("finds quotes despite whitespace and broken words, and computes the real line range", () => {
+    expect(resolveCitationLines("Our future success hinges on our ability to proactively harness", snippet)).toEqual({ start_line: 12, end_line: 14 });
+    expect(resolveCitationLines("Quantum Computing:", snippet)).toEqual({ start_line: 11, end_line: 11 });
+  });
+
+  it("supports ellipsis fragments in order and rejects out-of-order or missing text", () => {
+    expect(resolveCitationLines("Quantum Computing: ... inclusive economic growth", snippet)).toEqual({ start_line: 11, end_line: 15 });
+    expect(resolveCitationLines("inclusive economic growth ... Quantum Computing:", snippet)).toBeNull();
+    expect(resolveCitationLines("The service exposes secrets everywhere", snippet)).toBeNull();
+  });
+
+  it("rejects quotes that are too short to be meaningful", () => {
+    expect(resolveCitationLines("future", snippet)).toBeNull();
   });
 });
