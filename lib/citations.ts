@@ -55,7 +55,13 @@ function splitQuote(quote: string) {
   return quote.split(/\.{3}|\u2026/).map((original) => ({ original: original.trim(), folded: fold(original) }));
 }
 
-function locate(quote: string, snippet: ContextSnippet) {
+// A quote is exact when every fragment is found in order. When a long fragment only matches at
+// its start (models condense list items into one quote), a partial match is accepted if the
+// matched start is at least MIN_ANCHOR_CHARS long and every number in the unmatched remainder
+// also occurs in the evidence, so an invented figure cannot ride along with a real opening.
+const MIN_ANCHOR_CHARS = 24;
+
+function locate(quote: string, snippet: ContextSnippet, allowPartial = false) {
   const fragments = splitQuote(quote).map((fragment) => fragment.folded).filter((fragment) => fragment.length >= MIN_QUOTE_CHARS);
   if (!fragments.length) return null;
   const { haystack, lineOf } = buildHaystack(snippet);
@@ -64,10 +70,23 @@ function locate(quote: string, snippet: ContextSnippet) {
   let firstIndex = -1;
   let lastIndex = -1;
   for (const fragment of fragments) {
-    const found = haystack.indexOf(fragment, cursor);
+    let found = haystack.indexOf(fragment, cursor);
+    let matchedLength = fragment.length;
+    if (found < 0 && allowPartial) {
+      for (let length = fragment.length - 1; length >= MIN_ANCHOR_CHARS; length -= 1) {
+        const position = haystack.indexOf(fragment.slice(0, length), cursor);
+        if (position < 0) continue;
+        const remainderNumbers = fragment.slice(length).match(/\d{2,}/g) ?? [];
+        if (remainderNumbers.every((number) => haystack.includes(number))) {
+          found = position;
+          matchedLength = length;
+        }
+        break;
+      }
+    }
     if (found < 0) return null;
     if (firstIndex < 0) firstIndex = found;
-    lastIndex = found + fragment.length - 1;
+    lastIndex = found + matchedLength - 1;
     cursor = lastIndex + 1;
   }
   return {
@@ -76,8 +95,11 @@ function locate(quote: string, snippet: ContextSnippet) {
   };
 }
 
-export function resolveCitationLines(quote: string, snippet: ContextSnippet): { start_line: number; end_line: number } | null {
-  return locate(quote, snippet) ?? locate(stripListMarkers(quote), snippet);
+export function resolveCitationLines(quote: string, snippet: ContextSnippet): { start_line: number; end_line: number; partial: boolean } | null {
+  const exact = locate(quote, snippet) ?? locate(stripListMarkers(quote), snippet);
+  if (exact) return { ...exact, partial: false };
+  const partial = locate(stripListMarkers(quote), snippet, true);
+  return partial ? { ...partial, partial: true } : null;
 }
 
 // For server logs: says which quote fragments are missing from the evidence entirely (as opposed

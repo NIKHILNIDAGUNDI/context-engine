@@ -528,7 +528,10 @@ export async function runAgent(question: string) {
       });
       return [];
     }
-    return [{ ...citation, ...resolvedLines }];
+    if (resolvedLines.partial) {
+      console.info("Citation grounded on a partial quote match.", { file_path: citation.file_path.slice(0, 120), quote_preview: citation.quote.slice(0, 120) });
+    }
+    return [{ ...citation, start_line: resolvedLines.start_line, end_line: resolvedLines.end_line }];
   });
   const abstained = result.abstained || !validUsedIndices || result.unresolved_subquestions.length > 0 ||
     !result.answer.trim() || groundedCitations.length !== result.citations.length ||

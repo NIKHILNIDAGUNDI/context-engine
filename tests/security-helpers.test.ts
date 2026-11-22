@@ -67,12 +67,12 @@ describe("resolveCitationLines", () => {
   };
 
   it("finds quotes despite whitespace and broken words, and computes the real line range", () => {
-    expect(resolveCitationLines("Our future success hinges on our ability to proactively harness", snippet)).toEqual({ start_line: 12, end_line: 14 });
-    expect(resolveCitationLines("Quantum Computing:", snippet)).toEqual({ start_line: 11, end_line: 11 });
+    expect(resolveCitationLines("Our future success hinges on our ability to proactively harness", snippet)).toMatchObject({ start_line: 12, end_line: 14, partial: false });
+    expect(resolveCitationLines("Quantum Computing:", snippet)).toMatchObject({ start_line: 11, end_line: 11 });
   });
 
   it("supports ellipsis fragments in order and rejects out-of-order or missing text", () => {
-    expect(resolveCitationLines("Quantum Computing: ... inclusive economic growth", snippet)).toEqual({ start_line: 11, end_line: 15 });
+    expect(resolveCitationLines("Quantum Computing: ... inclusive economic growth", snippet)).toMatchObject({ start_line: 11, end_line: 15 });
     expect(resolveCitationLines("inclusive economic growth ... Quantum Computing:", snippet)).toBeNull();
     expect(resolveCitationLines("The service exposes secrets everywhere", snippet)).toBeNull();
   });
@@ -88,19 +88,26 @@ describe("resolveCitationLines", () => {
       end_line: 4,
       content: "India\u2019s quantum efforts\nNational Quantum Mission (NQM)\nbudget outlay of `6,003 crore\nOur future success hinges on",
     };
-    expect(resolveCitationLines("India's quantum efforts... National Quantum Mission (NQM) ... budget outlay of \u20b96,003 crore", pdf)).toEqual({ start_line: 1, end_line: 3 });
-    expect(resolveCitationLines("our future success hinges on", pdf)).toEqual({ start_line: 4, end_line: 4 });
+    expect(resolveCitationLines("India's quantum efforts... National Quantum Mission (NQM) ... budget outlay of \u20b96,003 crore", pdf)).toMatchObject({ start_line: 1, end_line: 3 });
+    expect(resolveCitationLines("our future success hinges on", pdf)).toMatchObject({ start_line: 4, end_line: 4 });
     expect(resolveCitationLines("budget outlay of 9,999 crore", pdf)).toBeNull();
   });
 
   it("falls back to letters-only matching when the model adds list numbers", () => {
     const list = { file_path: "doc.pdf", start_line: 1, end_line: 3, content: "Five ways quantum computing reshapes national security:\nCryptography and Cybersecurity\nIntelligence Gathering" };
-    expect(resolveCitationLines("Five ways quantum computing reshapes national security: 1. Cryptography and Cybersecurity... 2. Intelligence Gathering", list)).toEqual({ start_line: 1, end_line: 3 });
+    expect(resolveCitationLines("Five ways quantum computing reshapes national security: 1. Cryptography and Cybersecurity... 2. Intelligence Gathering", list)).toMatchObject({ start_line: 1, end_line: 3 });
   });
 
   it("reports which quote fragments are missing from the evidence", () => {
     const evidence = { file_path: "doc.pdf", start_line: 1, end_line: 1, content: "Cryptography and Cybersecurity" };
     const report = diagnoseCitation("Cryptography and Cybersecurity ... Satellite navigation systems", evidence);
     expect(report.map((item) => item.in_evidence)).toEqual([true, false]);
+  });
+
+  it("accepts a condensed quote whose opening is real, but not one that adds an invented figure", () => {
+    const list = { file_path: "doc.pdf", start_line: 5, end_line: 7, content: "Five ways quantum computing reshapes national security:\nCryptography and Cybersecurity\nBudget outlay of 6,003 crore" };
+    expect(resolveCitationLines("Five ways quantum computing reshapes national security: breaking all encryption instantly", list)).toEqual({ start_line: 5, end_line: 5, partial: true });
+    expect(resolveCitationLines("Five ways quantum computing reshapes national security: costing 9,999 crore in total", list)).toBeNull();
+    expect(resolveCitationLines("Quantum computing is invented by aliens in space", list)).toBeNull();
   });
 });
